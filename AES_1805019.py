@@ -1,4 +1,4 @@
-from Sbox import *
+from Sbox_1805019 import *
 from timeit import default_timer
 
 times = []
@@ -133,63 +133,6 @@ def mixColumns(mixer, state) :
     return out
 
 
-def matrix_encrypt(state, sched_keys, rounds):
-    round_key = transpose_matrix(sched_keys[0:4])
-    intermediate_matrix = add_round_key(state, round_key)
-    for current_round in range(rounds-1):
-        t = sbox_substitute_matrix(intermediate_matrix)
-        t = matrix_circular_shift(t)
-        # print_matrix(t)
-        if (current_round != rounds-2) :
-            t = mixColumns(Mixer, t)
-        
-        t = add_round_key(t, transpose_matrix(sched_keys[(current_round+1)*4 : (current_round+1)*4 + 4]))
-        intermediate_matrix = t
-
-    # print_matrix(intermediate_matrix)
-        
-    return intermediate_matrix
-
-
-def encrypt_aes128(plain, key) :
-    cipher = "" 
-    padded = pad_string(plain, ' ')
-    plainChunks = chunks(padded, 16)
-    # print(plainChunks)
-    modified_key = chunks(pad_string(key, '0'), 16)[0]
-
-    start = default_timer()
-    sched_keys = key_schedule_aes(modified_key.encode("utf-8").hex(), 11)
-    end = default_timer()
-    times.append(end-start)
-
-    start = default_timer()
-    for each in range(len(plainChunks)) : 
-        rowMajor = hex_to_grid_16(plainChunks[each].encode("ASCII").hex())
-        stateMatrix = transpose_matrix(rowMajor)
-        final_ecrypted_matrix = matrix_encrypt(stateMatrix, sched_keys, 11)
-        cipher += BitVector(hexstring=grid_16_to_hex(final_ecrypted_matrix)).get_bitvector_in_ascii()
-    end = default_timer()
-    times.append(end-start)
-
-    # print(cipher)
-    return cipher
-
-
-def sender_test() :
-    print("Enter: plain text")
-    str = input()
-    print("Enter: key")
-    key = input()
-    print("Plain Text:")
-    printText_HEX(str)
-    print("Key:")
-    printText_HEX(key)
-    cipher = encrypt_aes128(str, key)
-    # send
-    receiver_test(cipher, key)
-
-
 def inverse_sbox_substitute_word(w): 
     return [InvSbox[i] for i in w]
 
@@ -209,6 +152,28 @@ def inverse_mixColumns(inv_mixer, state):
     return mixColumns(inv_mixer, state)
 
 
+def integer_to_ascii_string(key):
+    byte_list = [(key >> i) & 0xff for i in range(120, -8, -8)]
+    # print(len(byte_list))
+    ascii_string = ''.join(chr(byte) for byte in byte_list)
+    return ascii_string
+
+
+def matrix_encrypt(state, sched_keys, rounds):
+    round_key = transpose_matrix(sched_keys[0:4])
+    intermediate_matrix = add_round_key(state, round_key)
+    for current_round in range(rounds-1):
+        t = sbox_substitute_matrix(intermediate_matrix)
+        t = matrix_circular_shift(t)
+        # print_matrix(t)
+        if (current_round != rounds-2) :
+            t = mixColumns(Mixer, t)
+        
+        t = add_round_key(t, transpose_matrix(sched_keys[(current_round+1)*4 : (current_round+1)*4 + 4]))
+        intermediate_matrix = t
+    return intermediate_matrix
+
+
 def matrix_decrypt(state, sched_keys, rounds) :
     round_key = transpose_matrix(sched_keys[len(sched_keys)-4 : len(sched_keys)])
     decrypting_matrix = add_round_key(state, round_key)
@@ -225,14 +190,41 @@ def matrix_decrypt(state, sched_keys, rounds) :
     # print_matrix(decrypting_matrix)
     return decrypting_matrix
 
+
+def encrypt_aes128(plain, key) :
+    cipher = "" 
+    padded = pad_string(plain, ' ')
+    plainChunks = chunks(padded, 16)
+    # print(plainChunks)
+    modified_key = chunks(pad_string(key, '0'), 16)[0]
+
+    start = default_timer()
+    # sched_keys = key_schedule_aes(modified_key.encode("utf-8").hex(), 11)
+    sched_keys = key_schedule_aes(BitVector(textstring=modified_key).get_bitvector_in_hex(), 11)
+    end = default_timer()
+    times.append(end-start)
+
+    start = default_timer()
+    for each in range(len(plainChunks)) : 
+        rowMajor = hex_to_grid_16(plainChunks[each].encode("ASCII").hex())
+        stateMatrix = transpose_matrix(rowMajor)
+        final_ecrypted_matrix = matrix_encrypt(stateMatrix, sched_keys, 11)
+        cipher += BitVector(hexstring=grid_16_to_hex(final_ecrypted_matrix)).get_bitvector_in_ascii()
+    end = default_timer()
+    times.append(end-start)
+
+    # print(cipher)
+    return cipher
+
+
 def decrypt_aes128(cipher, key) :
     plain = ""
     padded = pad_string(cipher, ' ')
     cipherChunks = chunks(padded, 16)
-    print(cipherChunks)
+    # print(cipherChunks)
     modified_key = chunks(pad_string(key, '0'), 16)[0]
-    sched_keys = key_schedule_aes(modified_key.encode("utf-8").hex(), 11)
-
+    # sched_keys = key_schedule_aes(modified_key.encode("utf-8").hex(), 11)
+    sched_keys = key_schedule_aes(BitVector(textstring=modified_key).get_bitvector_in_hex(), 11)
     start = default_timer()
     for each in range(len(cipherChunks)) :
         rowMajor = hex_to_grid_16(BitVector(textstring=cipherChunks[each]).get_bitvector_in_hex()) 
@@ -246,6 +238,20 @@ def decrypt_aes128(cipher, key) :
     return plain
 
 
+def sender_test() :
+    print("Enter: plain text")
+    str = input()
+    print("Enter: key")
+    key = input()
+    print("Plain Text:")
+    printText_HEX(str)
+    print("Key:")
+    printText_HEX(key)
+    cipher = encrypt_aes128(str, key)
+    # send
+    receiver_test(cipher, key)
+
+
 def receiver_test(cipher, key) :
     print("Cipher Text:")
     printText_HEX(cipher)
@@ -255,4 +261,4 @@ def receiver_test(cipher, key) :
     print_time_summary()
 
 
-sender_test()
+# sender_test()
